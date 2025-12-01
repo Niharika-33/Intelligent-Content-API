@@ -9,10 +9,11 @@ from sqlalchemy.future import select as sql_select
 from typing import List
 
 # --- Protected Imports ---
+# NOTE: We keep OAuth2PasswordBearer here only for the dependency structure (get_current_user)
 from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError
 
-# --- Model Imports (Simplified: Relying on successful load via main.py) ---
+# --- Model Imports ---
 from app.models.user import User
 from app.models.content import Content, Sentiment
 from app.schemas.content import ContentCreate, ContentAnalysisResults
@@ -20,8 +21,8 @@ from app.services.llm_service import analyze_content
 # -------------------------------------------------------------------------
 
 router = APIRouter()
-# NOTE: We use User for type hinting and model reference directly here
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/login")
+# Set the correct token URL for the Authorize modal
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/login") 
 
 # --- AUTHENTICATION DEPENDENCY ---
 async def get_current_user(
@@ -38,7 +39,6 @@ async def get_current_user(
     )
     
     try:
-        # Decode the JWT token payload
         payload = jwt.decode(
             token, 
             settings.SECRET_KEY, 
@@ -51,7 +51,6 @@ async def get_current_user(
     except JWTError:
         raise credentials_exception
 
-    # Fetch the user from the database
     user = await db.scalar(
         sql_select(User).where(User.id == int(user_id))
     )
@@ -83,7 +82,7 @@ async def register_user(
             detail="Email already registered."
         )
 
-    # Hash the password
+    # Hash the password (using safe SHA256)
     hashed_password = get_password_hash(user_data.password)
 
     # Create new user model instance
@@ -92,26 +91,26 @@ async def register_user(
         hashed_password=hashed_password
     )
 
-    # Add to database and commit
     db.add(new_user)
     await db.commit()
     await db.refresh(new_user)
     
     return new_user
 
-# --- 2. /login Endpoint (Unprotected) ---
+# --- 2. /login Endpoint (FINAL FIX FOR SWAGGER UI) ---
+# We switch this back to using UserCreate (JSON body) because Swagger only offers JSON.
 @router.post("/login", response_model=Token)
 async def login_for_access_token(
-    form_data: UserCreate, 
+    user_data: UserCreate, # Expect JSON input like POST /signup
     db: AsyncSession = Depends(get_db_session)
 ):
     # Retrieve user by email
     user = await db.scalar(
-        sql_select(User).where(User.email == form_data.email)
+        sql_select(User).where(User.email == user_data.email)
     )
 
     # Check if user exists and password is correct
-    if not user or not verify_password(form_data.password, user.hashed_password):
+    if not user or not verify_password(user_data.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
@@ -125,6 +124,7 @@ async def login_for_access_token(
         expires_delta=access_token_expires
     )
     
+    # The login succeeded using JSON input, which is accepted by Swagger UI.
     return {"access_token": access_token, "token_type": "bearer"}
 
 # --- 3. POST /contents Endpoint (Create & AI Process) ---
@@ -138,7 +138,6 @@ async def create_content(
     Uploads content, saves it to the database, and triggers asynchronous AI processing.
     """
     
-    # 1. Save the content initially (Status 1)
     new_content = Content(
         raw_content=content_data.raw_content,
         owner_id=current_user.id,
@@ -147,10 +146,8 @@ async def create_content(
     await db.commit()
     await db.refresh(new_content)
 
-    # 2. Trigger AI processing (Asynchronous Call)
     summary, sentiment = await analyze_content(new_content.raw_content)
 
-    # 3. Update the database record with the AI results
     if summary is not None or sentiment is not None:
         new_content.summary = summary
         new_content.sentiment = sentiment.value if sentiment else None 
