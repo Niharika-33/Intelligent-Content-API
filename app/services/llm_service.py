@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 SUMMARIZATION_MODEL = "facebook/bart-large-cnn" 
 SENTIMENT_MODEL = "cardiffnlp/twitter-roberta-base-sentiment-latest" 
 
-HUGGINGFACE_API_URL = "https://api-inference.huggingface.co/models/"
+HUGGINGFACE_API_URL = "https://router.huggingface.co/models/"
 
 # --- Core LLM Inference Function ---
 
