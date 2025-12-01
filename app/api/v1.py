@@ -13,10 +13,9 @@ from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError
 
 # --- Model Imports (Use alias to simplify) ---
-from app.models.user import User as UserModel 
-from app.models.content import Content
+from app.models import User as UserModel, Content, Sentiment 
 from app.schemas.content import ContentCreate, ContentAnalysisResults
-from app.services.llm_service import analyze_content 
+from app.services.llm_service import analyze_content
 # -----------------------------------------------------------
 
 router = APIRouter()
