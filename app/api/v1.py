@@ -8,27 +8,28 @@ from app.core.config import settings
 from sqlalchemy.future import select as sql_select
 from typing import List
 
-# --- Protected Imports (Must import after security/schemas) ---
+# --- Protected Imports ---
 from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError
 
-# --- Model Imports (Use alias to simplify) ---
-from app.models import User as UserModel, Content, Sentiment 
+# --- Model Imports (Simplified: Relying on successful load via main.py) ---
+from app.models.user import User
+from app.models.content import Content, Sentiment
 from app.schemas.content import ContentCreate, ContentAnalysisResults
-from app.services.llm_service import analyze_content
-# -----------------------------------------------------------
+from app.services.llm_service import analyze_content 
+# -------------------------------------------------------------------------
 
 router = APIRouter()
+# NOTE: We use User for type hinting and model reference directly here
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login") 
 
 # --- AUTHENTICATION DEPENDENCY ---
 async def get_current_user(
     db: AsyncSession = Depends(get_db_session), 
     token: str = Depends(oauth2_scheme)
-) -> UserModel: # <-- Use UserModel here
+) -> User:
     """
     Dependency that authenticates the user based on the JWT token.
-    If successful, returns the User object from the database.
     """
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -52,7 +53,7 @@ async def get_current_user(
 
     # Fetch the user from the database
     user = await db.scalar(
-        sql_select(UserModel).where(UserModel.id == int(user_id))
+        sql_select(User).where(User.id == int(user_id))
     )
     
     if user is None:
@@ -74,7 +75,7 @@ async def register_user(
 ):
     # Check if user already exists
     user_exists = await db.scalar(
-        sql_select(UserModel).where(UserModel.email == user_data.email)
+        sql_select(User).where(User.email == user_data.email)
     )
     if user_exists:
         raise HTTPException(
@@ -86,7 +87,7 @@ async def register_user(
     hashed_password = get_password_hash(user_data.password)
 
     # Create new user model instance
-    new_user = UserModel( # <-- Use UserModel alias here
+    new_user = User(
         email=user_data.email, 
         hashed_password=hashed_password
     )
@@ -106,7 +107,7 @@ async def login_for_access_token(
 ):
     # Retrieve user by email
     user = await db.scalar(
-        sql_select(UserModel).where(UserModel.email == form_data.email)
+        sql_select(User).where(User.email == form_data.email)
     )
 
     # Check if user exists and password is correct
@@ -131,7 +132,7 @@ async def login_for_access_token(
 async def create_content(
     content_data: ContentCreate,
     db: AsyncSession = Depends(get_db_session),
-    current_user: UserModel = Depends(get_current_user) # Protected endpoint
+    current_user: User = Depends(get_current_user) # Protected endpoint
 ):
     """
     Uploads content, saves it to the database, and triggers asynchronous AI processing.
@@ -163,7 +164,7 @@ async def create_content(
 @router.get("/contents", response_model=List[ContentAnalysisResults])
 async def read_contents(
     db: AsyncSession = Depends(get_db_session),
-    current_user: UserModel = Depends(get_current_user) # Protected endpoint
+    current_user: User = Depends(get_current_user) # Protected endpoint
 ):
     """
     Retrieves all content submitted by the authenticated user.
@@ -180,7 +181,7 @@ async def read_contents(
 async def read_content_by_id(
     content_id: int,
     db: AsyncSession = Depends(get_db_session),
-    current_user: UserModel = Depends(get_current_user) # Protected endpoint
+    current_user: User = Depends(get_current_user) # Protected endpoint
 ):
     """
     Retrieves a specific piece of content by ID, ensuring ownership.
@@ -203,7 +204,7 @@ async def read_content_by_id(
 async def delete_content(
     content_id: int,
     db: AsyncSession = Depends(get_db_session),
-    current_user: UserModel = Depends(get_current_user) # Protected endpoint
+    current_user: User = Depends(get_current_user) # Protected endpoint
 ):
     """
     Deletes a specific piece of content by ID, ensuring ownership.
