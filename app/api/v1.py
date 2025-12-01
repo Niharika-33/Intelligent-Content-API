@@ -21,7 +21,7 @@ from app.services.llm_service import analyze_content
 
 router = APIRouter()
 # NOTE: We use User for type hinting and model reference directly here
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login") 
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/login")
 
 # --- AUTHENTICATION DEPENDENCY ---
 async def get_current_user(
