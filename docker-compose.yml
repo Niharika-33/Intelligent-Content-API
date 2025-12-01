@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  # 1. Database Service (MySQL)
+  db:
+    image: mysql:8.0
+    container_name: intelligent_content_db
+    restart: always
+    environment:
+      # --- Credentials defined here (used by the MySQL image on startup) ---
+      MYSQL_ROOT_PASSWORD: DocPa$$335
+      MYSQL_DATABASE: content_db        
+    ports:
+      # Exposes the container port 3306 to the local machine port 3306
+      - "3306:3306"
+    volumes:
+      # Persists the data outside the container
+      - db_data:/var/lib/mysql
+
+  # 2. Application Service (Your FastAPI App)
+  web:
+    build: . # Uses the Dockerfile in the root directory
+    container_name: intelligent_content_api
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - .:/app # Mount the project directory inside the container for hot-reloading
+    ports:
+      - "8000:8000" # Expose app port
+    env_file:
+      - .env # Load environment variables from the .env file
+    depends_on:
+      - db # Ensure the database starts before the web app tries to connect
+
+volumes:
+  db_data:
