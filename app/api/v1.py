@@ -2,32 +2,31 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.database import get_db_session
 from app.schemas.user import UserCreate, Token
-from app.models.user import User
 from app.core.security import get_password_hash, verify_password, create_access_token
 from datetime import timedelta
 from app.core.config import settings
 from sqlalchemy.future import select as sql_select
 from typing import List
 
-# --- New Imports for Authentication Dependency and Content Management ---
+# --- Protected Imports (Must import after security/schemas) ---
 from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError
+
+# --- Model Imports (Use alias to simplify) ---
+from app.models.user import User as UserModel 
 from app.models.content import Content
 from app.schemas.content import ContentCreate, ContentAnalysisResults
 from app.services.llm_service import analyze_content 
-# ----------------------------------------------------------------------
+# -----------------------------------------------------------
 
 router = APIRouter()
-
-# We use this scheme to integrate with FastAPI's security framework.
-# It tells FastAPI to look for a 'Bearer' token in the Authorization header.
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login") 
 
 # --- AUTHENTICATION DEPENDENCY ---
 async def get_current_user(
     db: AsyncSession = Depends(get_db_session), 
     token: str = Depends(oauth2_scheme)
-) -> User:
+) -> UserModel: # <-- Use UserModel here
     """
     Dependency that authenticates the user based on the JWT token.
     If successful, returns the User object from the database.
@@ -45,18 +44,16 @@ async def get_current_user(
             settings.SECRET_KEY, 
             algorithms=[settings.ALGORITHM]
         )
-        # The subject ('sub') holds the user ID we stored during login
         user_id: str = payload.get("sub")
         if user_id is None:
             raise credentials_exception
         
     except JWTError:
-        # Raised if the token is expired, invalidly signed, or malformed
         raise credentials_exception
 
     # Fetch the user from the database
     user = await db.scalar(
-        sql_select(User).where(User.id == int(user_id))
+        sql_select(UserModel).where(UserModel.id == int(user_id))
     )
     
     if user is None:
@@ -78,7 +75,7 @@ async def register_user(
 ):
     # Check if user already exists
     user_exists = await db.scalar(
-        sql_select(User).where(User.email == user_data.email)
+        sql_select(UserModel).where(UserModel.email == user_data.email)
     )
     if user_exists:
         raise HTTPException(
@@ -90,7 +87,7 @@ async def register_user(
     hashed_password = get_password_hash(user_data.password)
 
     # Create new user model instance
-    new_user = User(
+    new_user = UserModel( # <-- Use UserModel alias here
         email=user_data.email, 
         hashed_password=hashed_password
     )
@@ -100,19 +97,17 @@ async def register_user(
     await db.commit()
     await db.refresh(new_user)
     
-    # Return user details (without password)
-    # NOTE: It returns the UserCreate schema, which correctly excludes the hashed_password field
     return new_user
 
 # --- 2. /login Endpoint (Unprotected) ---
 @router.post("/login", response_model=Token)
 async def login_for_access_token(
-    form_data: UserCreate, # Using UserCreate schema for email/password input
+    form_data: UserCreate, 
     db: AsyncSession = Depends(get_db_session)
 ):
     # Retrieve user by email
     user = await db.scalar(
-        sql_select(User).where(User.email == form_data.email)
+        sql_select(UserModel).where(UserModel.email == form_data.email)
     )
 
     # Check if user exists and password is correct
@@ -126,7 +121,7 @@ async def login_for_access_token(
     # Create the JWT access token
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
-        data={"sub": str(user.id)}, # 'sub' stands for subject, we use user ID here
+        data={"sub": str(user.id)}, 
         expires_delta=access_token_expires
     )
     
@@ -137,18 +132,16 @@ async def login_for_access_token(
 async def create_content(
     content_data: ContentCreate,
     db: AsyncSession = Depends(get_db_session),
-    current_user: User = Depends(get_current_user) # Protected endpoint
+    current_user: UserModel = Depends(get_current_user) # Protected endpoint
 ):
     """
-    Uploads content, saves it to the database, and triggers asynchronous AI processing
-    for summarization and sentiment analysis.
+    Uploads content, saves it to the database, and triggers asynchronous AI processing.
     """
     
     # 1. Save the content initially (Status 1)
     new_content = Content(
         raw_content=content_data.raw_content,
         owner_id=current_user.id,
-        # summary and sentiment are NULL initially
     )
     db.add(new_content)
     await db.commit()
@@ -160,19 +153,18 @@ async def create_content(
     # 3. Update the database record with the AI results
     if summary is not None or sentiment is not None:
         new_content.summary = summary
-        new_content.sentiment = sentiment.value if sentiment else None # Convert Enum to string value
+        new_content.sentiment = sentiment.value if sentiment else None 
         
         await db.commit()
         await db.refresh(new_content)
 
-    # Return the content object, now potentially containing the AI results
     return new_content
 
 # --- 4. GET /contents Endpoint (Retrieve All) ---
 @router.get("/contents", response_model=List[ContentAnalysisResults])
 async def read_contents(
     db: AsyncSession = Depends(get_db_session),
-    current_user: User = Depends(get_current_user) # Protected endpoint
+    current_user: UserModel = Depends(get_current_user) # Protected endpoint
 ):
     """
     Retrieves all content submitted by the authenticated user.
@@ -181,7 +173,6 @@ async def read_contents(
         sql_select(Content)
         .where(Content.owner_id == current_user.id)
     )
-    # Fetch all content objects linked to the user
     contents = result.scalars().all()
     return contents
 
@@ -190,7 +181,7 @@ async def read_contents(
 async def read_content_by_id(
     content_id: int,
     db: AsyncSession = Depends(get_db_session),
-    current_user: User = Depends(get_current_user) # Protected endpoint
+    current_user: UserModel = Depends(get_current_user) # Protected endpoint
 ):
     """
     Retrieves a specific piece of content by ID, ensuring ownership.
@@ -213,7 +204,7 @@ async def read_content_by_id(
 async def delete_content(
     content_id: int,
     db: AsyncSession = Depends(get_db_session),
-    current_user: User = Depends(get_current_user) # Protected endpoint
+    current_user: UserModel = Depends(get_current_user) # Protected endpoint
 ):
     """
     Deletes a specific piece of content by ID, ensuring ownership.
@@ -232,7 +223,6 @@ async def delete_content(
 
     await db.delete(content_to_delete)
     await db.commit()
-    # HTTP 204 means success with no body content returned
     return
 
 # Placeholder for the old status check
