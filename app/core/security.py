@@ -6,22 +6,20 @@ from app.core.config import settings
 
 # --- Password Hashing Setup ---
 
-# Define the context for password hashing (using bcrypt)
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto") 
+# CRITICAL FIX: Use the native SHA256 hash, which has no external C-library dependency
+# and no 72-byte limit issues, eliminating the source of the crash.
+pwd_context = CryptContext(schemes=["sha256_crypt"], deprecated="auto") 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verifies a plain password against a hashed one."""
+    # This function uses the same context, which handles the SHA256 verification
     return pwd_context.verify(plain_password, hashed_password)
 
 def get_password_hash(password: str) -> str:
     """
-    Hashes a password for storage. 
-    Truncates the password to 72 characters to satisfy the bcrypt backend requirement.
+    Hashes a password for storage using SHA256 (no external dependencies needed).
     """
-    # CRITICAL: Truncate the password manually before passing to pwd_context
-    if len(password) > 72:
-        password = password[:72]
-        
+    # Truncation is no longer necessary but also harmless if left in for safety
     return pwd_context.hash(password)
 
 # --- JWT Token Management (remains the same) ---
