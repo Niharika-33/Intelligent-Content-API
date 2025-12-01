@@ -1,4 +1,10 @@
-# ... (Imports remain the same) ...
+from pydantic_settings import BaseSettings # <-- CORRECT IMPORT
+from pydantic import Field # <-- CORRECT IMPORT
+import os
+from dotenv import load_dotenv
+
+# Load environment variables from the .env file
+load_dotenv()
 
 class Settings(BaseSettings):
     # Database Settings
@@ -9,9 +15,8 @@ class Settings(BaseSettings):
     ALGORITHM: str = Field("HS256", description="Algorithm used for JWT encryption.")
     ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(30, description="Lifetime of the access token in minutes.")
 
-    # LLM Settings (Updated for Hugging Face)
-    # Changed OPENAI_API_KEY to HUGGINGFACE_API_KEY
-    HUGGINGFACE_API_KEY: str = Field(..., description="API key for Hugging Face Inference service.") 
+    # LLM Settings
+    HUGGINGFACE_API_KEY: str = Field(..., description="API key for Hugging Face Inference service.")
 
 # Instantiate settings object
 settings = Settings()
