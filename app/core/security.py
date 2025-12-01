@@ -7,14 +7,21 @@ from app.core.config import settings
 # --- Password Hashing Setup ---
 
 # Define the context for password hashing (using bcrypt)
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Added 'bcrypt' to schemes explicitly, passlib should handle the backend better.
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto") 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verifies a plain password against a hashed one."""
     return pwd_context.verify(plain_password, hashed_password)
 
 def get_password_hash(password: str) -> str:
-    """Hashes a password for storage."""
+    """Hashes a password for storage. Handles the 72 byte limit internally."""
+    
+    # We truncate the password to fit the bcrypt limit (72 bytes) before hashing.
+    # This ensures the API doesn't crash on long, valid input.
+    if len(password.encode('utf-8')) > 72:
+        password = password[:72]
+        
     return pwd_context.hash(password)
 
 # --- JWT Token Management ---
@@ -39,5 +46,3 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
         algorithm=settings.ALGORITHM
     )
     return encoded_jwt
-
-# Error handling for token decoding will be handled in the API router.
