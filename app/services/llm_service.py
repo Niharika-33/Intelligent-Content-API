@@ -1,5 +1,6 @@
 import httpx # A modern, fast, async HTTP client for Python
 import json
+import asyncio # <-- NEW IMPORT: Required for concurrent tasks
 from app.core.config import settings
 from app.models.content import Sentiment
 from typing import Tuple, Optional
@@ -8,9 +9,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 # --- Hugging Face Model Endpoints ---
-# We select two separate, high-quality models for better, specialized results
-SUMMARIZATION_MODEL = "facebook/bart-large-cnn" # Excellent for abstractive summarization
-SENTIMENT_MODEL = "cardiffnlp/twitter-roberta-base-sentiment-latest" # Optimized for sentiment analysis
+SUMMARIZATION_MODEL = "facebook/bart-large-cnn" 
+SENTIMENT_MODEL = "cardiffnlp/twitter-roberta-base-sentiment-latest" 
 
 HUGGINGFACE_API_URL = "https://api-inference.huggingface.co/models/"
 
@@ -19,10 +19,8 @@ HUGGINGFACE_API_URL = "https://api-inference.huggingface.co/models/"
 async def query_model(model_id: str, payload: dict) -> Optional[dict]:
     """
     Makes an asynchronous HTTP POST request to a Hugging Face Inference API endpoint.
-    Handles authentication and basic error responses.
     """
     
-    # Use httpx for asynchronous requests
     async with httpx.AsyncClient(timeout=10.0) as client:
         headers = {
             "Authorization": f"Bearer {settings.HUGGINGFACE_API_KEY}",
@@ -34,7 +32,7 @@ async def query_model(model_id: str, payload: dict) -> Optional[dict]:
         # Implement Error Handling (Graceful handling if the AI API is down or times out)
         try:
             response = await client.post(url, headers=headers, json=payload)
-            response.raise_for_status() # Raise an exception for 4xx or 5xx responses
+            response.raise_for_status() 
 
             result = response.json()
             return result
@@ -43,7 +41,6 @@ async def query_model(model_id: str, payload: dict) -> Optional[dict]:
             logger.error(f"Hugging Face API call to {model_id} timed out.")
             return None
         except httpx.HTTPStatusError as e:
-            # This handles 4xx (e.g., Auth failure) or 5xx (e.g., Server error)
             logger.error(f"Hugging Face API call to {model_id} failed with status {e.response.status_code}. Response: {e.response.text}")
             return None
         except json.JSONDecodeError:
@@ -64,14 +61,14 @@ async def analyze_content(raw_text: str) -> Tuple[Optional[str], Optional[Sentim
     summary_payload = {"inputs": raw_text, "parameters": {"min_length": 30, "max_length": 150}}
     
     # 2. Sentiment Analysis Task (Classification)
-    # The sentiment model takes the full text as input
     sentiment_payload = {"inputs": raw_text}
 
-    # Run both AI calls concurrently (asynchronously)
+    # CRITICAL FIX: Use asyncio.gather to run tasks concurrently
     summarization_task = query_model(SUMMARIZATION_MODEL, summary_payload)
     sentiment_task = query_model(SENTIMENT_MODEL, sentiment_payload)
     
-    results = await httpx.gather(summarization_task, sentiment_task)
+    # asyncio.gather runs both coroutines in parallel
+    results = await asyncio.gather(summarization_task, sentiment_task)
     
     summary_result = results[0]
     sentiment_result = results[1]
@@ -79,16 +76,11 @@ async def analyze_content(raw_text: str) -> Tuple[Optional[str], Optional[Sentim
     # --- Process Summarization Result ---
     summary = None
     if summary_result and isinstance(summary_result, list) and summary_result[0].get('summary_text'):
-        # Extract the summary text
         summary = summary_result[0]['summary_text']
 
     # --- Process Sentiment Result ---
     sentiment = None
     if sentiment_result and isinstance(sentiment_result, list) and sentiment_result[0] and isinstance(sentiment_result[0], list):
-        # Hugging Face sentiment models often return a list of labels with scores
-        # Example: [[{'label': 'POSITIVE', 'score': 0.99}, {'label': 'NEGATIVE', 'score': 0.005}]]
-        
-        # Find the label with the highest score
         best_label = None
         highest_score = -1
         
@@ -99,16 +91,10 @@ async def analyze_content(raw_text: str) -> Tuple[Optional[str], Optional[Sentim
                 best_label = classification.get('label')
 
         if best_label:
-            # Map the Hugging Face label to your SQLAlchemy Enum
             try:
-                # The labels are usually "POSITIVE", "NEGATIVE", or "NEUTRAL"
                 sentiment = Sentiment[best_label.upper()] 
             except KeyError:
                 logger.warning(f"Unknown sentiment label returned: {best_label}")
 
 
     return summary, sentiment
-
-# Note: We use httpx.gather here instead of asyncio.gather because
-# asyncio.gather requires a different setup for the async client.
-# httpx is implicitly available via the AsyncClient setup.
