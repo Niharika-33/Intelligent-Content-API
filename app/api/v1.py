@@ -1,16 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.database import get_db_session
-from app.schemas.user import UserCreate, Token, UserPublic
+from app.schemas.user import UserCreate, Token, UserPublic # Now imports UserPublic
 from app.core.security import get_password_hash, verify_password, create_access_token
 from datetime import timedelta
 from app.core.config import settings
 from sqlalchemy.future import select as sql_select
 from typing import List
 
-# --- Protected Imports ---
-# NOTE: We keep OAuth2PasswordBearer here only for the dependency structure (get_current_user)
-from fastapi.security import OAuth2PasswordBearer
+# --- Protected Imports (CRITICAL FOR AUTH) ---
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm # <--- RE-IMPORTED HERE
 from jose import jwt, JWTError
 
 # --- Model Imports ---
@@ -97,20 +96,20 @@ async def register_user(
     
     return new_user
 
-# --- 2. /login Endpoint (FINAL FIX FOR SWAGGER UI) ---
-# We switch this back to using UserCreate (JSON body) because Swagger only offers JSON.
+# --- 2. /login Endpoint (CRITICAL FIX: Uses form data for Authorization Modal) ---
 @router.post("/login", response_model=Token)
 async def login_for_access_token(
-    user_data: UserCreate, # Expect JSON input like POST /signup
+    # CHANGE IS HERE: Must use OAuth2PasswordRequestForm for Swagger UI to work
+    form_data: OAuth2PasswordRequestForm = Depends(), 
     db: AsyncSession = Depends(get_db_session)
 ):
-    # Retrieve user by email
+    # Retrieve user by email (OAuth2PasswordRequestForm uses 'username' field for email)
     user = await db.scalar(
-        sql_select(User).where(User.email == user_data.email)
+        sql_select(User).where(User.email == form_data.username)
     )
 
     # Check if user exists and password is correct
-    if not user or not verify_password(user_data.password, user.hashed_password):
+    if not user or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
@@ -124,7 +123,7 @@ async def login_for_access_token(
         expires_delta=access_token_expires
     )
     
-    # The login succeeded using JSON input, which is accepted by Swagger UI.
+    # The login succeeded.
     return {"access_token": access_token, "token_type": "bearer"}
 
 # --- 3. POST /contents Endpoint (Create & AI Process) ---
