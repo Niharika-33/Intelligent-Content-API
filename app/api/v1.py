@@ -68,7 +68,7 @@ async def get_current_user(
     return user
     
 # --- 1. /signup Endpoint (Unprotected) ---
-@router.post("/signup", response_model=UserCreate, status_code=status.HTTP_201_CREATED)
+@router.post("/signup", response_model=UserPublic, status_code=status.HTTP_201_CREATED)
 async def register_user(
     user_data: UserCreate, 
     db: AsyncSession = Depends(get_db_session)

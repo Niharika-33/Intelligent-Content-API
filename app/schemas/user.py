@@ -2,29 +2,30 @@ from pydantic import BaseModel, EmailStr
 from typing import Optional
 import datetime
 
-# --- Input Schemas ---
+# --- Input Schemas (Used for POST /signup and POST /login body) ---
 
 class UserCreate(BaseModel):
-    """Schema for user registration input."""
+    """Schema for user registration and login input (email/password)."""
     email: EmailStr
     password: str
 
-class UserLogin(BaseModel):
-    """Schema for user login input."""
-    email: EmailStr
-    password: str
+# NOTE: We reuse UserCreate for UserLogin input, as they are identical fields.
 
-# --- Output Schemas ---
+# --- Output Schemas (Used for API responses) ---
 
-class UserBase(BaseModel):
-    """Base schema for user data."""
+class UserPublic(BaseModel):
+    """
+    Schema for public user data returned by the API (e.g., after signup).
+    CRITICAL: Excludes sensitive fields like 'hashed_password'.
+    """
     id: int
     email: EmailStr
     is_active: bool
     created_at: datetime.datetime
 
     class Config:
-        # Allows Pydantic to read data from the SQLAlchemy ORM model (key requirement for FastAPI)
+        # This Pydantic setting is essential to map column names (ORM model) 
+        # to the schema fields when returning the response.
         from_attributes = True 
 
 class Token(BaseModel):
