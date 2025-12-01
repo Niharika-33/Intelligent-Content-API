@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 
 services:
   # 1. Database Service (MySQL)
@@ -7,29 +7,54 @@ services:
     container_name: intelligent_content_db
     restart: always
     environment:
-      # --- Credentials defined here (used by the MySQL image on startup) ---
-      MYSQL_ROOT_PASSWORD: DocPa$$335
-      MYSQL_DATABASE: content_db        
+      # --- CREDENTIALS (MUST MATCH .ENV) ---
+      MYSQL_ROOT_PASSWORD: DocPa$$335 # <-- CHANGE THIS TO YOUR ACTUAL PASSWORD
+      MYSQL_DATABASE: content_db
     ports:
-      # Exposes the container port 3306 to the local machine port 3306
       - "3306:3306"
     volumes:
-      # Persists the data outside the container
       - db_data:/var/lib/mysql
+
+    # --- CRITICAL FIX 1: HEALTHCHECK WITH CORRECT PASSWORD ---
+    healthcheck:
+      # Use the correct password here! We use the placeholder for safety.
+      # Format: -p[PASSWORD_HERE] (no space)
+      test:
+        [
+          "CMD",
+          "mysqladmin",
+          "ping",
+          "-h",
+          "localhost",
+          "-u",
+          "root",
+          "-pDocPa$$335",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s # Give MySQL time to initialize on first run
 
   # 2. Application Service (Your FastAPI App)
   web:
-    build: . # Uses the Dockerfile in the root directory
+    build: .
     container_name: intelligent_content_api
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+    # --- CRITICAL FIX 2: Correct command to resolve ImportError ---
+    # Running via 'python -m uvicorn' ensures Python finds the 'app' package correctly.
+    command: python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
     volumes:
-      - .:/app # Mount the project directory inside the container for hot-reloading
+      - .:/app
     ports:
-      - "8000:8000" # Expose app port
+      - "8000:8000"
     env_file:
-      - .env # Load environment variables from the .env file
+      - .env
+
+    # This dependency ensures the web app waits until the DB reports 'healthy'
     depends_on:
-      - db # Ensure the database starts before the web app tries to connect
+      db:
+        condition: service_healthy
 
 volumes:
   db_data:
