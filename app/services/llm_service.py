@@ -4,41 +4,54 @@ import asyncio
 import logging
 from app.core.config import settings
 from app.models.content import Sentiment
-from typing import Tuple, Optional
+from typing import Tuple, Optional, List, Dict
 
 logger = logging.getLogger(__name__)
 
-# --- Hugging Face Model Endpoints (FINAL ATTEMPT: Use a single, reliable model) ---
-# Use a simple, non-specialized text model and ask it to perform both tasks.
-GENERATION_MODEL = "distilbert-base-uncased" 
+# --- Hugging Face Model Endpoints (Using the last known good URL) ---
+SUMMARIZATION_MODEL = "facebook/bart-large-cnn"
+SENTIMENT_MODEL = "distilbert-base-uncased-finetuned-sst-2-english" 
 
-HUGGINGFACE_API_URL = "https://router.huggingface.co/models/" 
+HUGGINGFACE_API_URL = "https://api-inference.huggingface.co/models/" # We MUST use this base URL
 
 # --- Core LLM Inference Function ---
 
-async def query_model(model_id: str, payload: dict) -> Optional[dict]:
+async def query_model(model_id: str, payload: Dict, is_sentiment: bool) -> Optional[List[Dict]]:
     """
     Makes an asynchronous HTTP POST request to a Hugging Face Inference API endpoint.
     """
     
-    async with httpx.AsyncClient(timeout=15.0) as client:
+    # NOTE: Reverting to the old api-inference URL because the router one is path sensitive
+    # and requires a different structure that often conflicts with generic model calls.
+    url = f"https://api-inference.huggingface.co/models/{model_id}"
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
         # NOTE: Hugging Face uses 'Authorization' header for authentication
         headers = {
             "Authorization": f"Bearer {settings.HUGGINGFACE_API_KEY}",
             "Content-Type": "application/json"
         }
         
-        url = HUGGINGFACE_API_URL + model_id
-        
         try:
-            response = await client.post(url, headers=headers, json=payload)
+            # For sentiment, the input should be wrapped in 'inputs' structure: {"inputs": ["text"]}
+            if is_sentiment:
+                request_payload = {"inputs": [payload["inputs"]]}
+            else:
+                # For summarization, structure depends on the model, but simple inputs usually work
+                request_payload = payload
+
+            response = await client.post(url, headers=headers, json=request_payload)
             response.raise_for_status() 
 
             result = response.json()
+            # If the response is a nested list (common for multi-label classification), simplify it
+            if is_sentiment and result and isinstance(result, list) and isinstance(result[0], list):
+                 return result[0]
+            
             return result
 
         except httpx.TimeoutException:
-            logger.error(f"LLM API call to {model_id} timed out after 15s. (Network Error/Slow Model)")
+            logger.error(f"LLM API call to {model_id} timed out after 30s.")
             return None
         except httpx.HTTPStatusError as e:
             logger.error(f"LLM API call to {model_id} failed. Status: {e.response.status_code}. Response: {e.response.text}")
@@ -52,45 +65,51 @@ async def query_model(model_id: str, payload: dict) -> Optional[dict]:
 
 async def analyze_content(raw_text: str) -> Tuple[Optional[str], Optional[Sentiment]]:
     """
-    Performs summarization and basic sentiment analysis using a single model query.
+    Performs summarization and sentiment analysis on the raw text concurrently.
     """
     
-    # CRITICAL: Ask the model to perform both tasks and return a structured format
-    prompt = (
-        f"Analyze the following text. "
-        f"1. Provide a 3-sentence summary. "
-        f"2. Determine the overall sentiment (Positive, Negative, or Neutral). "
-        f"Text: '{raw_text}'"
-    )
+    # 1. Summarization Task
+    summary_payload = {"inputs": raw_text, "parameters": {"min_length": 30, "max_length": 150}}
     
-    payload = {
-        "inputs": prompt, 
-        "parameters": {
-            "max_new_tokens": 100, 
-            "return_full_text": False
-        }
-    }
+    # 2. Sentiment Analysis Task
+    sentiment_payload = {"inputs": raw_text}
 
-    # Use only one model to simplify the network logic
-    result = await query_model(GENERATION_MODEL, payload)
+    # Run both AI calls concurrently (asynchronously)
+    summarization_task = query_model(SUMMARIZATION_MODEL, summary_payload, is_sentiment=False)
+    sentiment_task = query_model(SENTIMENT_MODEL, sentiment_payload, is_sentiment=True)
     
-    if not result or not isinstance(result, list) or not result[0].get('generated_text'):
-        logger.error("LLM returned an empty or invalid response structure.")
-        return None, None
+    # We use asyncio.gather for true concurrency
+    results = await asyncio.gather(summarization_task, sentiment_task)
+    
+    summary_result: Optional[List[Dict]] = results[0]
+    sentiment_result: Optional[List[Dict]] = results[1]
 
-    generated_text = result[0]['generated_text'].strip()
+    # --- Process Summarization Result ---
+    summary = None
+    # Check for the expected list structure from summarization model
+    if summary_result and isinstance(summary_result, list) and summary_result[0].get('summary_text'):
+        summary = summary_result[0]['summary_text']
 
-    # Simple logic to extract Summary and Sentiment from the unstructured text output
-    summary_text = generated_text # Assume the entire output is the summary
-    sentiment_result = None
+    # --- Process Sentiment Result ---
+    sentiment = None
+    if sentiment_result and isinstance(sentiment_result, list):
+        # Find the label with the highest score
+        best_label = None
+        highest_score = -1
+        
+        for classification in sentiment_result:
+            score = classification.get('score', 0)
+            if score > highest_score:
+                highest_score = score
+                best_label = classification.get('label')
 
-    # Simple keyword detection for sentiment (since the prompt asks for it)
-    lower_text = generated_text.lower()
-    if 'positive' in lower_text or 'good' in lower_text:
-        sentiment_result = Sentiment.POSITIVE
-    elif 'negative' in lower_text or 'bad' in lower_text:
-        sentiment_result = Sentiment.NEGATIVE
-    else:
-        sentiment_result = Sentiment.NEUTRAL
+        if best_label:
+            # Map the Hugging Face label (e.g., 'POSITIVE') to your SQLAlchemy Enum
+            try:
+                # DistilBERT sentiment labels are usually 'POSITIVE' or 'NEGATIVE'
+                sentiment = Sentiment[best_label.upper()] 
+            except KeyError:
+                logger.warning(f"Unknown sentiment label returned: {best_label}")
 
-    return summary_text, sentiment_result
+
+    return summary, sentiment
