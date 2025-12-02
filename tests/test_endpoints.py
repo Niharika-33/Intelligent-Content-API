@@ -46,13 +46,7 @@ app.dependency_overrides[get_db_session] = override_get_db_session
 
 # --- 2. Pytest Fixture for Test Client and Tables ---
 
-@pytest.fixture(scope="module", autouse=True)
-def event_loop():
-    """Fixture to provide a module-scoped event loop."""
-    loop = asyncio.get_event_loop()
-    yield loop
-
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="session")
 async def client():
     """Fixture to provide the Async Test Client and manage table setup/teardown."""
     # Setup: Create tables before tests run
