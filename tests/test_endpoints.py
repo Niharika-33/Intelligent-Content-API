@@ -6,12 +6,13 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 
+
 # CRITICAL FIX: Inject the project root path to resolve ModuleNotFoundError
 # This allows pytest to correctly import app.main from the project root.
 sys.path.insert(0, os.path.abspath("."))
 
 # Import core application components for testing
-from app.main import app
+from main import app
 from app.db.database import Base, get_db_session
 from app.core.test_config import TEST_DATABASE_URL # Import the test URL
 from app.models.user import User # Used for type hinting
