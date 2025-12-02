@@ -20,7 +20,7 @@ async def query_gemini(raw_text: str) -> Optional[Dict[str, str]]:
     returning a structured JSON object to be easily parsed.
     """
     
-    # 1. Define the System Instruction (Persona & Output Format)
+    # 1. Define the System Instruction 
     system_prompt = (
         "You are an AI analyst. Analyze the following text. "
         "Your task is to provide a concise summary (max 2 sentences) and determine the overall sentiment."

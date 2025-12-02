@@ -12,17 +12,16 @@ pwd_context = CryptContext(schemes=["sha256_crypt"], deprecated="auto")
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verifies a plain password against a hashed one."""
-    # This function uses the same context, which handles the SHA256 verification
+    # This function handles the SHA256 verification
     return pwd_context.verify(plain_password, hashed_password)
 
 def get_password_hash(password: str) -> str:
     """
     Hashes a password for storage using SHA256 (no external dependencies needed).
     """
-    # Truncation is no longer necessary but also harmless if left in for safety
     return pwd_context.hash(password)
 
-# --- JWT Token Management (remains the same) ---
+# --- JWT Token Management---
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     """Creates a new JWT access token."""

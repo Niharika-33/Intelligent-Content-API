@@ -24,8 +24,6 @@ class UserPublic(BaseModel):
     created_at: datetime.datetime
 
     class Config:
-        # This Pydantic setting is essential to map column names (ORM model) 
-        # to the schema fields when returning the response.
         from_attributes = True 
 
 class Token(BaseModel):

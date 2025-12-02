@@ -11,7 +11,7 @@ class Base(AsyncAttrs, DeclarativeBase):
 # create_async_engine uses the URL from settings (e.g., mysql+aiomysql://...)
 engine = create_async_engine(
     settings.DATABASE_URL,
-    echo=True  # Set to False in production
+    echo=True 
 )
 
 # 3. Asynchronous Session Maker

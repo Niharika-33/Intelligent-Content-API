@@ -1,29 +1,26 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.database import get_db_session
-from app.schemas.user import UserCreate, Token, UserPublic # Now imports UserPublic
+from app.schemas.user import UserCreate, Token, UserPublic 
 from app.core.security import get_password_hash, verify_password, create_access_token
 from datetime import timedelta
 from app.core.config import settings
 from sqlalchemy.future import select as sql_select
 from typing import List
-
-# --- Protected Imports (CRITICAL FOR AUTH) ---
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm # <--- RE-IMPORTED HERE
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm 
 from jose import jwt, JWTError
 
-# --- Model Imports ---
+#Model Imports
 from app.models.user import User
 from app.models.content import Content, Sentiment
 from app.schemas.content import ContentCreate, ContentAnalysisResults
 from app.services.llm_service import analyze_content 
-# -------------------------------------------------------------------------
 
 router = APIRouter()
-# Set the correct token URL for the Authorize modal
+#token URL for the Authorize modal
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/login") 
 
-# --- AUTHENTICATION DEPENDENCY ---
+# AUTHENTICATION DEPENDENCY
 async def get_current_user(
     db: AsyncSession = Depends(get_db_session), 
     token: str = Depends(oauth2_scheme)
@@ -99,7 +96,6 @@ async def register_user(
 # --- 2. /login Endpoint (CRITICAL FIX: Uses form data for Authorization Modal) ---
 @router.post("/login", response_model=Token)
 async def login_for_access_token(
-    # CHANGE IS HERE: Must use OAuth2PasswordRequestForm for Swagger UI to work
     form_data: OAuth2PasswordRequestForm = Depends(), 
     db: AsyncSession = Depends(get_db_session)
 ):

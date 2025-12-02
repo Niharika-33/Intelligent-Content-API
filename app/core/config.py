@@ -2,8 +2,6 @@ from pydantic_settings import BaseSettings
 from pydantic import Field
 import os
 from dotenv import load_dotenv
-
-# Load environment variables from the .env file
 load_dotenv()
 
 class Settings(BaseSettings):
@@ -16,7 +14,6 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(30, description="Lifetime of the access token in minutes.")
 
     # --- LLM Settings (Updated for Gemini) ---
-    # This variable must match the one in your .env file
     GEMINI_API_KEY: str = Field(..., description="API key for the Gemini service.") 
 
 # Instantiate settings object
