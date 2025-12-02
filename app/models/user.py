@@ -1,11 +1,17 @@
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy import String, Integer, DateTime, func, Boolean
-from app.db.database import Base
-import datetime
-from typing import List
+from __future__ import annotations
 
-# Import Content model here? NO! Use a string reference instead to break the circle.
-# from app.models.content import Content 
+import datetime
+from typing import List, TYPE_CHECKING
+
+from sqlalchemy import String, Integer, DateTime, func, Boolean
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.db.database import Base
+
+if TYPE_CHECKING:
+    # Only imported for type hints; avoids circular import at runtime
+    from app.models.content import Content
+
 
 class User(Base):
     __tablename__ = "users"
@@ -16,9 +22,8 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=func.now())
 
-    # CRITICAL FIX: Use the string name 'Content' instead of importing the model object
+    # Relationship to Content (one-to-many)
     contents: Mapped[List["Content"]] = relationship(back_populates="owner")
-    
+
     def __repr__(self) -> str:
         return f"User(id={self.id!r}, email={self.email!r})"
-        
