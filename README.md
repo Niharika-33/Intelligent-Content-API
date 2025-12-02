@@ -92,3 +92,20 @@ The proposed production architecture leverages serverless computing to ensure hi
 | Database (MySQL) | Cloud SQL | Fully managed persistent data layer, separated from the stateless API. |
 | Security & Traffic | API Gateway | Enforces security policies (JWT validation, rate limits) at the edge before traffic reaches the Cloud Run service. |
 | CI/CD | GitHub Actions / Artifact Registry | Automates Docker image build, secure storage, and triggers reliable deployment to Cloud Run. |
+
+## 4. Testing
+
+Basic end-to-end tests are implemented using `pytest` and `httpx.AsyncClient` to validate the authentication and protected content flows. [web:67][web:64]
+
+### Run tests locally
+
+With dependencies installed in your environment:
+```bash
+pytest tests
+```
+### Run tests inside Docker (matching the CI setup)
+```bash
+docker compose exec web python -m pytest tests
+```
+
+These tests are also executed automatically in the GitHub Actions CI workflow on each push to main or dev.

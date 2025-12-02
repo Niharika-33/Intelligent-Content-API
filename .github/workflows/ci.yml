@@ -4,50 +4,46 @@ on:
   # Triggers the workflow on push events to the main/dev branches
   push:
     branches:
-      # Use 'dev' here, as your command line output shows you pushing to 'dev'
       - main
-      - dev 
+      - dev
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
 jobs:
   build_and_lint:
     runs-on: ubuntu-latest
-    
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Set up Python 3.11
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
-        
-    - name: Install Dependencies
-      run: |
-        # Upgrade pip and install from requirements.txt
-        python -m pip install --upgrade pip
-        # Install packages, including FastAPI, Pydantic, httpx (needed for LLM service), and testing tools
-        pip install -r requirements.txt
-        pip install pytest flake8
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
 
-    - name: Run Flake8 Linting (Code Quality Check)
-      run: |
-        # Stop the build if there are Python syntax errors or unused imports
-        # Exclude the virtual environment and the auto-generated database files if any
-        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --exclude=venv,.venv,migrations
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest flake8
 
-    # NOTE: The 'test_endpoints' step will be added later when we implement unit tests.
+      - name: Run Flake8 Linting (Code Quality Check)
+        run: |
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --exclude=venv,.venv,migrations
+
+      - name: Run Pytest (Unit Tests)
+        run: |
+          pytest tests
 
   build_docker_image:
     runs-on: ubuntu-latest
-    needs: build_and_lint # Only run if linting/dependencies pass
-    
-    steps: # <-- Check this indentation carefully! It must align with 'name:' or 'uses:'
+    needs: build_and_lint
+
+    steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Build Docker Image
-        # This confirms the Dockerfile is valid and dependencies can be installed inside the container
         run: |
           docker build . --file Dockerfile --tag intelligent-content-api:latest
