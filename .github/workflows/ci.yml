@@ -32,7 +32,7 @@ jobs:
 
       - name: Run Pytest (Unit Tests)
         run: |
-          pytest tests
+          env DATABASE_URL="sqlite+aiosqlite:///./test.db" SECRET_KEY="test-secret-key" GEMINI_API_KEY="test-gemini-key" pytest tests
 
   build_docker_image:
     runs-on: ubuntu-latest
