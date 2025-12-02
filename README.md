@@ -21,12 +21,13 @@ cd Intelligent-Content-API
 # Create a local .env file (File is .gitignored for security)
 cp .env.example .env
 
-Generate Secure JWT Key (SECRET_KEY):
+### Generate Secure JWT Key (SECRET_KEY)
 
 Generate a secure, 32 character random string to use as your SECRET_KEY in the .env file:
 
 ```bash
 python -c 'import secrets; print(secrets.token_urlsafe(32))'
+```
 
 ### Crucial Checkpoint: Update the `.env` file
 
