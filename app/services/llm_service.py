@@ -1,18 +1,18 @@
-import httpx # A modern, fast, async HTTP client for Python
+import httpx 
 import json
-import asyncio # <-- NEW IMPORT: Required for concurrent tasks
+import asyncio 
+import logging
 from app.core.config import settings
 from app.models.content import Sentiment
 from typing import Tuple, Optional
-import logging
 
 logger = logging.getLogger(__name__)
 
-# --- Hugging Face Model Endpoints ---
-SUMMARIZATION_MODEL = "facebook/bart-large-cnn" 
-SENTIMENT_MODEL = "distilbert-base-uncased-finetuned-sst-2-english"
+# --- Hugging Face Model Endpoints (FINAL ATTEMPT: Use a single, reliable model) ---
+# Use a simple, non-specialized text model and ask it to perform both tasks.
+GENERATION_MODEL = "distilbert-base-uncased" 
 
-HUGGINGFACE_API_URL = "https://router.huggingface.co/models/"
+HUGGINGFACE_API_URL = "https://router.huggingface.co/models/" 
 
 # --- Core LLM Inference Function ---
 
@@ -21,7 +21,8 @@ async def query_model(model_id: str, payload: dict) -> Optional[dict]:
     Makes an asynchronous HTTP POST request to a Hugging Face Inference API endpoint.
     """
     
-    async with httpx.AsyncClient(timeout=10.0) as client:
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        # NOTE: Hugging Face uses 'Authorization' header for authentication
         headers = {
             "Authorization": f"Bearer {settings.HUGGINGFACE_API_KEY}",
             "Content-Type": "application/json"
@@ -29,7 +30,6 @@ async def query_model(model_id: str, payload: dict) -> Optional[dict]:
         
         url = HUGGINGFACE_API_URL + model_id
         
-        # Implement Error Handling (Graceful handling if the AI API is down or times out)
         try:
             response = await client.post(url, headers=headers, json=payload)
             response.raise_for_status() 
@@ -38,63 +38,59 @@ async def query_model(model_id: str, payload: dict) -> Optional[dict]:
             return result
 
         except httpx.TimeoutException:
-            logger.error(f"Hugging Face API call to {model_id} timed out.")
+            logger.error(f"LLM API call to {model_id} timed out after 15s. (Network Error/Slow Model)")
             return None
         except httpx.HTTPStatusError as e:
-            logger.error(f"Hugging Face API call to {model_id} failed with status {e.response.status_code}. Response: {e.response.text}")
-            return None
-        except json.JSONDecodeError:
-            logger.error(f"Hugging Face API call to {model_id} returned invalid JSON.")
+            logger.error(f"LLM API call to {model_id} failed. Status: {e.response.status_code}. Response: {e.response.text}")
             return None
         except Exception as e:
             logger.error(f"An unexpected error occurred during API call to {model_id}: {e}")
             return None
 
+
 # --- Main Analysis Function ---
 
 async def analyze_content(raw_text: str) -> Tuple[Optional[str], Optional[Sentiment]]:
     """
-    Performs summarization and sentiment analysis on the raw text concurrently.
+    Performs summarization and basic sentiment analysis using a single model query.
     """
     
-    # 1. Summarization Task
-    summary_payload = {"inputs": raw_text, "parameters": {"min_length": 30, "max_length": 150}}
+    # CRITICAL: Ask the model to perform both tasks and return a structured format
+    prompt = (
+        f"Analyze the following text. "
+        f"1. Provide a 3-sentence summary. "
+        f"2. Determine the overall sentiment (Positive, Negative, or Neutral). "
+        f"Text: '{raw_text}'"
+    )
     
-    # 2. Sentiment Analysis Task (Classification)
-    sentiment_payload = {"inputs": raw_text}
+    payload = {
+        "inputs": prompt, 
+        "parameters": {
+            "max_new_tokens": 100, 
+            "return_full_text": False
+        }
+    }
 
-    # CRITICAL FIX: Use asyncio.gather to run tasks concurrently
-    summarization_task = query_model(SUMMARIZATION_MODEL, summary_payload)
-    sentiment_task = query_model(SENTIMENT_MODEL, sentiment_payload)
+    # Use only one model to simplify the network logic
+    result = await query_model(GENERATION_MODEL, payload)
     
-    # asyncio.gather runs both coroutines in parallel
-    results = await asyncio.gather(summarization_task, sentiment_task)
-    
-    summary_result = results[0]
-    sentiment_result = results[1]
+    if not result or not isinstance(result, list) or not result[0].get('generated_text'):
+        logger.error("LLM returned an empty or invalid response structure.")
+        return None, None
 
-    # --- Process Summarization Result ---
-    summary = None
-    if summary_result and isinstance(summary_result, list) and summary_result[0].get('summary_text'):
-        summary = summary_result[0]['summary_text']
+    generated_text = result[0]['generated_text'].strip()
 
-    # --- Process Sentiment Result ---
-    sentiment = None
-    if sentiment_result and isinstance(sentiment_result, list) and sentiment_result[0] and isinstance(sentiment_result[0], list):
-        best_label = None
-        highest_score = -1
-        
-        for classification in sentiment_result[0]:
-            score = classification.get('score', 0)
-            if score > highest_score:
-                highest_score = score
-                best_label = classification.get('label')
+    # Simple logic to extract Summary and Sentiment from the unstructured text output
+    summary_text = generated_text # Assume the entire output is the summary
+    sentiment_result = None
 
-        if best_label:
-            try:
-                sentiment = Sentiment[best_label.upper()] 
-            except KeyError:
-                logger.warning(f"Unknown sentiment label returned: {best_label}")
+    # Simple keyword detection for sentiment (since the prompt asks for it)
+    lower_text = generated_text.lower()
+    if 'positive' in lower_text or 'good' in lower_text:
+        sentiment_result = Sentiment.POSITIVE
+    elif 'negative' in lower_text or 'bad' in lower_text:
+        sentiment_result = Sentiment.NEGATIVE
+    else:
+        sentiment_result = Sentiment.NEUTRAL
 
-
-    return summary, sentiment
+    return summary_text, sentiment_result
