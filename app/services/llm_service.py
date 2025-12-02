@@ -9,8 +9,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 # --- Hugging Face Model Endpoints ---
-SUMMARIZATION_MODEL = "sshleifer/distilbart-cnn-12-6" # Lighter, stable summarizer 
-SENTIMENT_MODEL = "finiteautomata/bertweet-base-sentiment-analysis" # Stable sentiment classifier
+SUMMARIZATION_MODEL = "facebook/bart-large-cnn" 
+SENTIMENT_MODEL = "distilbert-base-uncased-finetuned-sst-2-english"
 
 HUGGINGFACE_API_URL = "https://router.huggingface.co/models/"
 
