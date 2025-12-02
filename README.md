@@ -1,176 +1,92 @@
-🧠 The Intelligent Content API
+# The Intelligent Content API
 
-Backend Engineering Intern Assignment
+## Backend Engineering Intern Assignment: Full Stack Microservice Implementation (FastAPI + MySQL + Gemini)
 
-This project delivers a complete, containerized RESTful API built with Python's FastAPI framework. It securely manages user content and leverages the Google Gemini LLM for asynchronous summarization and sentiment analysis.
+## 1. Setup and Local Execution
 
-🚀 1. Setup Instructions (Local & Docker)
+This project is fully containerized using Docker to guarantee a consistent, portable environment.
 
-Prerequisites
+### Prerequisites
 
-Git: Installed and configured.
+1. Git: Installed and configured.
+2. Docker Desktop: Installed and running (required for containerization).
+3. Gemini API Key: A free key generated from Google AI Studio (required for AI functionality).
 
-Docker Desktop: Installed and running (essential for MySQL and application containerization).
-
-Gemini API Key: A free key generated from Google AI Studio (required to bypass network permission errors).
-
-Step 1: Clone the Repository & Configure
+### Step 1: Clone the Repository and Configure Secrets
 
 # Clone the repository
-git clone [https://github.com/DevNiha/Intelligent-Content-API.git](https://github.com/DevNiha/Intelligent-Content-API.git)
+git clone https://github.com/Niharika-33/Intelligent-Content-API.git
 cd Intelligent-Content-API
 
-# Copy the example environment file and fill in secrets
+# Create a local .env file (File is .gitignored for security)
 cp .env.example .env
 
+Generate Secure JWT Key (SECRET_KEY):
 
-Update the .env file: Replace placeholders with your actual secure values.
+Generate a secure, 32 character random string to use as your SECRET_KEY in the .env file:
 
-Variable
+```bash
+python -c 'import secrets; print(secrets.token_urlsafe(32))'
 
-Purpose
+### Crucial Checkpoint: Update the `.env` file
 
-Value to Set
+| Variable | Purpose | Cross Check Status |
+|----------|----------|---------------------|
+| DATABASE_URL Password | MySQL DB Password | Must EXACTLY match the password set in docker compose.yml. |
+| SECRET_KEY | JWT signing key (32+ random characters) | Must be long and random. |
+| GEMINI_API_KEY | Your Google Gemini API Key | Must be the actual key starting with AIzaSy... (Crucial for LLM function). |
 
-DATABASE_URL
+### Step 2: Build and Run the Stack
 
-MySQL Connection String
+Run this single command from the root directory. It builds the FastAPI container, starts the MySQL container, and manages the dependency sequence.
 
-mysql+aiomysql://root:MyStrongDockerDBPass123@db:3306/content_db
-
-SECRET_KEY
-
-JWT signing key (32+ random characters)
-
-[GENERATED_RANDOM_STRING]
-
-GEMINI_API_KEY
-
-Your Google Gemini API Key (AIzaSy...)
-
-[YOUR_GEMINI_KEY]
-
-Step 2: Build and Run with Docker Compose
-
-This command handles building the image, starting the database, and managing the startup dependency (ensuring the API waits for the database to be ready).
-
+# Builds the web service and starts the MySQL container
 docker compose up -d --build
 
-
-Step 3: Stop the Application
-
-When you are finished, stop and remove the containers:
+When finished, stop the containers:
 
 docker compose down
 
+### Step 3: Verification and Access
 
-🛠️ 2. API Documentation (Swagger UI)
+* Documentation URL (Swagger UI): http://localhost:8000/docs  
+* API Root URL: http://localhost:8000/api/v1
 
-The API automatically generates interactive documentation compliant with OpenAPI (Swagger UI).
+## 2. API Endpoints & Functional Flow
 
-Docs URL: http://localhost:8000/docs
+All critical API logic is protected and located within the `/api/v1` router.
 
-Key Endpoints
+| Method | Endpoint | Description | Authentication |
+|--------|----------|-------------|----------------|
+| POST | /api/v1/signup | Registers a new user. | Public |
+| POST | /api/v1/login | Authenticates user (using form data for Swagger UI) and returns the JWT access_token. | Public |
+| POST | /api/v1/contents | Core Feature: Saves content, triggers asynchronous LLM analysis, and updates the record with results. | Requires JWT |
+| GET | /api/v1/contents | Retrieves all content owned by the authenticated user (tested working). | Requires JWT |
+| DELETE | /api/v1/contents/{id} | Deletes a specific piece of content (confirmed working). | Requires JWT |
 
-Method
+## 3. Design Decisions & Technical Overview
 
-Endpoint
+### A. Core Technical Stack
 
-Description
+| Component | Technology | Rationale |
+|-----------|-------------|-----------|
+| Framework | FastAPI (Python 3.11) | Chosen for its high performance, asynchronous capabilities (ideal for handling I/O-bound LLM waiting periods). |
+| Database | MySQL + Async SQLAlchemy | Used a single relational DB for persistence. Robust Docker Health Checks were implemented to resolve complex startup dependency issues. |
+| Authentication | JWT / SHA256 | Standard security protocol. SHA256 hashing was implemented to bypass external C library conflicts (like bcrypt) found in the container environment. |
 
-Authentication
+### B. LLM Integration: Transition to Gemini Structured Output
 
-POST
+The final integration uses the Google Gemini API (under the Google Vertex AI mandate) to ensure stability, resolving previous issues with external service path changes.
 
-/api/v1/signup
+LLM Workflow: The Python service makes a single asynchronous request to the Gemini API. This request is designed with a JSON Schema instructing Gemini to perform both Summarization and Sentiment Analysis and return the result in a clean, validated JSON structure. This method eliminated fragile, multi-step API calls and manual data parsing.
 
-Registers a new user account.
+### C. GCP Deployment Architecture (Theoretical)
 
-Public
+The proposed production architecture leverages serverless computing to ensure high availability and automatic scaling.
 
-POST
-
-/api/v1/login
-
-Authenticates user and returns a JWT access_token. (Uses form data input).
-
-Public
-
-POST
-
-/api/v1/contents
-
-Saves content to DB & Triggers AI analysis for summary/sentiment.
-
-Requires JWT
-
-GET
-
-/api/v1/contents
-
-Retrieves all content submitted by the authenticated user.
-
-Requires JWT
-
-DELETE
-
-/api/v1/contents/{id}
-
-Delete a specific piece of content.
-
-Requires JWT
-
-💡 3. Design Decisions & Technical Overview
-
-LLM Integration: Transition to Gemini Structured Output
-
-Initial Approach (Hugging Face): We initially attempted to use the Hugging Face Inference API. This demonstrated modularity but led to constant 404/410 errors (Gone / Not Found) due to deprecated model paths and unstable service access on the free tier. This proved that relying on external free endpoints is risky for production deployment.
-
-Current Solution (Gemini): To guarantee reliability and fulfill the assignment's requirement to use a Google AI service ("Google Vertex AI"), we switched the backend of llm_service.py to target the Gemini API.
-
-How Gemini is Integrated:
-The Python service makes a single asynchronous call to Gemini, asking it to perform both tasks (summarization and sentiment classification) and respond with a specific JSON schema. This approach ensures:
-
-Reliability: The request is stable and less prone to path/model archiving issues.
-
-Structured Output: We enforce the output format via Pydantic schema in the prompt, eliminating complex text parsing in the Python backend code.
-
-Security: The API key is read securely from the application environment variables (.env).
-
-Database & Structure
-
-Database: MySQL via SQLAlchemy (Asynchronous ORM) is used for persistence. We successfully debugged and resolved the complex startup dependency that required the FastAPI container to wait for the MySQL container to be fully Healthy.
-
-Authentication: Uses the OAuth2/JWT Bearer scheme with SHA256 hashing for strong security. We resolved the tricky Swagger UI implementation bug by correctly configuring the /login endpoint to accept Form Data, which the UI relies on for the Authorization modal.
-
-☁️ 4. GCP Deployment Architecture (Theoretical)
-
-Component
-
-GCP Service
-
-Role & Justification
-
-Backend API (FastAPI)
-
-Cloud Run
-
-Serverless deployment of our Python container. Scales automatically and handles the I/O-bound task of waiting for the Gemini response efficiently without tying up resources.
-
-Database (MySQL)
-
-Cloud SQL
-
-Fully managed database service (no manual patching or maintenance required). Provides a persistent and secure data layer separate from the stateless API layer.
-
-Security & Traffic
-
-API Gateway
-
-Sits in front of Cloud Run to enforce external security policies (API key validation, rate limits) and manage traffic access.
-
-CI/CD
-
-GitHub Actions & Artifact Registry
-
-GitHub Actions pushes the final Docker image to Artifact Registry, and a subsequent step triggers a deployment update to Cloud Run.
+| Component | GCP Service | Role & Justification |
+|-----------|--------------|----------------------|
+| Backend API (FastAPI) | Cloud Run | Serverless deployment of the Docker container. Scales automatically and efficiently handles the I/O-bound wait time for the Gemini service. |
+| Database (MySQL) | Cloud SQL | Fully managed persistent data layer, separated from the stateless API. |
+| Security & Traffic | API Gateway | Enforces security policies (JWT validation, rate limits) at the edge before traffic reaches the Cloud Run service. |
+| CI/CD | GitHub Actions / Artifact Registry | Automates Docker image build, secure storage, and triggers reliable deployment to Cloud Run. |
