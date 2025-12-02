@@ -13,13 +13,13 @@ This project is fully containerized using Docker to guarantee a consistent, port
 3. Gemini API Key: A free key generated from Google AI Studio (required for AI functionality).
 
 ### Step 1: Clone the Repository and Configure Secrets
-
+```bash
 # Clone the repository
 git clone https://github.com/Niharika-33/Intelligent-Content-API.git
 cd Intelligent-Content-API
-
 # Create a local .env file (File is .gitignored for security)
 cp .env.example .env
+```
 
 ### Generate Secure JWT Key (SECRET_KEY)
 
@@ -40,14 +40,15 @@ python -c 'import secrets; print(secrets.token_urlsafe(32))'
 ### Step 2: Build and Run the Stack
 
 Run this single command from the root directory. It builds the FastAPI container, starts the MySQL container, and manages the dependency sequence.
-
+```bash
 # Builds the web service and starts the MySQL container
 docker compose up -d --build
+```
 
 When finished, stop the containers:
-
+```bash
 docker compose down
-
+```
 ### Step 3: Verification and Access
 
 * Documentation URL (Swagger UI): http://localhost:8000/docs  
