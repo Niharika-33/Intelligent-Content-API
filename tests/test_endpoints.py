@@ -3,48 +3,42 @@ import pytest_asyncio
 import asyncio
 import sys
 import os
-from httpx import AsyncClient
+from httpx import AsyncClient, ASGITransport
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 
 # CRITICAL FIX: Inject the project root path to resolve ModuleNotFoundError
-# This allows pytest to correctly import app.main from the project root.
 sys.path.insert(0, os.path.abspath("."))
 
 # Import core application components for testing
 from main import app
 from app.db.database import Base, get_db_session
-from app.core.test_config import TEST_DATABASE_URL  # Import the test URL
+from app.core.test_config import TEST_DATABASE_URL
 from app.models.user import User  # Used for type hinting
 
 
 # --- 1. Database Setup for Testing ---
 
-# Create asynchronous engine for SQLite in-memory database
 test_engine = create_async_engine(
     TEST_DATABASE_URL,
     echo=False,
-    connect_args={"check_same_thread": False},  # Required for SQLite/FastAPI async testing
+    connect_args={"check_same_thread": False},
 )
 
-# Define the session local factory
 TestingSessionLocal = sessionmaker(
     autocommit=False,
     autoflush=False,
     expire_on_commit=False,
     bind=test_engine,
-    class_=AsyncSession,  # Use AsyncSession for testing
+    class_=AsyncSession,
 )
 
 
-# Function to override the database dependency in FastAPI
-# This ensures that our endpoints use the SQLite database during tests
 async def override_get_db_session():
     async with TestingSessionLocal() as session:
         yield session
 
 
-# Apply the dependency override
 app.dependency_overrides[get_db_session] = override_get_db_session
 
 
@@ -55,31 +49,26 @@ app.dependency_overrides[get_db_session] = override_get_db_session
 async def client() -> AsyncClient:
     """
     Async fixture to provide the Async Test Client and manage table setup/teardown.
-    Runs in session scope so the same client is reused across tests.
     """
-    # Setup: Create tables before tests run
+    # Setup: create tables
     async with test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    # Yield the test client
-    async with AsyncClient(app=app, base_url="http://test") as ac:
+    transport = ASGITransport(app=app)
+
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
 
-    # Teardown: Drop tables after tests finish
+    # Teardown: drop tables
     async with test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
 
 
-# --- 3. Test Cases (2 Required for Bonus Points) ---
+# --- 3. Test Cases ---
 
 
 @pytest.mark.asyncio
 async def test_1_create_and_login_user(client: AsyncClient):
-    """
-    Tests POST /api/v1/signup and POST /api/v1/login.
-    Verifies user creation, password hashing, and successful JWT generation.
-    """
-    # 1. Test Signup
     signup_data = {
         "email": "testuser@pytest.com",
         "password": "TestPassword123",
@@ -89,12 +78,10 @@ async def test_1_create_and_login_user(client: AsyncClient):
     assert response.status_code == 201
     assert response.json()["email"] == "testuser@pytest.com"
 
-    # 2. Test Login (Requires Form Data input structure)
     login_data = {
-        "username": "testuser@pytest.com",  # OAuth2 uses 'username' field for email
+        "username": "testuser@pytest.com",
         "password": "TestPassword123",
     }
-    # Note the header: must be 'application/x-www-form-urlencoded' for OAuth2PasswordRequestForm
     response = await client.post(
         "/api/v1/login",
         data=login_data,
@@ -108,11 +95,6 @@ async def test_1_create_and_login_user(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_2_read_protected_content(client: AsyncClient):
-    """
-    Tests GET /api/v1/contents (Protected Route).
-    Verifies token authentication works and returns content (or an empty list).
-    """
-    # 1. Log in to get a valid token
     login_data = {
         "username": "testuser@pytest.com",
         "password": "TestPassword123",
@@ -124,15 +106,12 @@ async def test_2_read_protected_content(client: AsyncClient):
     )
     token = login_response.json()["access_token"]
 
-    # 2. Test reading content with the valid token
     headers = {"Authorization": f"Bearer {token}"}
     read_response = await client.get("/api/v1/contents", headers=headers)
 
-    # Should succeed (returns 200 OK, even if content list is empty)
     assert read_response.status_code == 200
     assert isinstance(read_response.json(), list)
 
-    # 3. Test Unauthorized Access (without token)
     unauth_response = await client.get("/api/v1/contents")
     assert unauth_response.status_code == 401
     assert unauth_response.json()["detail"] == "Not authenticated"
