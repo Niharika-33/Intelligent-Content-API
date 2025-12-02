@@ -6,7 +6,7 @@ aiomysql
 SQLAlchemy
 passlib[bcrypt]
 python-jose[cryptography]
-openai
 pydantic-settings
 email-validator
 python-multipart
+httpx
